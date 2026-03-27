@@ -1,4 +1,7 @@
-use crate::{mock::*, Error};
+use crate::{
+    mock::*, AccountTrustedAccountIndex, AccountTrustedAccountList, AccountTrustedAccountListCount,
+    Error,
+};
 use polkadot_sdk::frame_support::{assert_noop, assert_ok};
 
 #[test]
@@ -77,6 +80,21 @@ fn trust_account() {
 }
 
 #[test]
+fn trust_account_respects_max_trusted_accounts() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(TrustedAccounts::trust_account(RuntimeOrigin::signed(1), 2));
+        assert_ok!(TrustedAccounts::trust_account(RuntimeOrigin::signed(1), 3));
+        assert_ok!(TrustedAccounts::trust_account(RuntimeOrigin::signed(1), 4));
+        assert_ok!(TrustedAccounts::trust_account(RuntimeOrigin::signed(1), 5));
+
+        assert_noop!(
+            TrustedAccounts::trust_account(RuntimeOrigin::signed(1), 6),
+            Error::<Test>::TooManyTrustedAccounts
+        );
+    });
+}
+
+#[test]
 fn untrust_account_not_trusted_control() {
     new_test_ext().execute_with(|| {
         assert_ok!(TrustedAccounts::trust_account(RuntimeOrigin::signed(1), 2));
@@ -133,5 +151,31 @@ fn untrust_account() {
         ));
         assert_eq!(TrustedAccounts::account_trusted_account_list_count(1), 0);
         assert_eq!(TrustedAccounts::account_trusted_account_index(1, 4), None);
+    });
+}
+
+#[test]
+fn untrust_account_detects_corrupt_storage() {
+    new_test_ext().execute_with(|| {
+        AccountTrustedAccountListCount::<Test>::insert(1, 2);
+        AccountTrustedAccountIndex::<Test>::insert(1, 2, 1);
+
+        assert_noop!(
+            TrustedAccounts::untrust_account(RuntimeOrigin::signed(1), 2),
+            Error::<Test>::BadStorageState
+        );
+    });
+}
+
+#[test]
+fn helper_queries_skip_missing_entries() {
+    new_test_ext().execute_with(|| {
+        AccountTrustedAccountListCount::<Test>::insert(1, 2);
+        AccountTrustedAccountList::<Test>::insert(1, 0, 2);
+        AccountTrustedAccountIndex::<Test>::insert(2, 3, 1);
+
+        assert_eq!(TrustedAccounts::trusted_by(1), vec![2]);
+        assert!(TrustedAccounts::is_trusted_only_deep(1, 3));
+        assert_eq!(TrustedAccounts::trusted_by_that_trust(1, 3), vec![2]);
     });
 }

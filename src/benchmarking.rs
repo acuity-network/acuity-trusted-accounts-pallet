@@ -28,10 +28,15 @@ mod benchmarks {
     pub fn untrust_account() {
         let caller: T::AccountId = whitelisted_caller();
         let trusted: T::AccountId = account("trusted", 0, 0);
+        let trusted_other: T::AccountId = account("trusted", 1, 0);
 
         assert_ok!(Pallet::<T>::trust_account(
             frame_system::RawOrigin::Signed(caller.clone()).into(),
             trusted.clone(),
+        ));
+        assert_ok!(Pallet::<T>::trust_account(
+            frame_system::RawOrigin::Signed(caller.clone()).into(),
+            trusted_other.clone(),
         ));
 
         #[extrinsic_call]

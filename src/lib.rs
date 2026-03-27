@@ -32,6 +32,9 @@ pub mod pallet {
                           + IsType<<Self as polkadot_sdk::frame_system::Config>::RuntimeEvent>,
     >
     {
+        #[pallet::constant]
+        type MaxTrustedAccounts: Get<u32>;
+
         type WeightInfo: crate::WeightInfo;
     }
 
@@ -53,8 +56,6 @@ pub mod pallet {
     pub type AccountTrustedAccountIndex<T: Config> =
         StorageDoubleMap<_, Identity, T::AccountId, Blake2_128Concat, T::AccountId, u32>;
 
-    // Pallets use events to inform users when important changes are made.
-    // https://docs.substrate.io/v3/runtime/events-and-errors
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -64,110 +65,109 @@ pub mod pallet {
         AccountUntrusted(T::AccountId, T::AccountId),
     }
 
-    // Errors inform users that something went wrong.
     #[pallet::error]
     pub enum Error<T> {
-        /// It is not possible to trust self
+        /// It is not possible to trust self.
         TrustSelf,
         /// The account is already trusted.
         AlreadyTrusted,
+        /// The account has reached the maximum number of trusted accounts.
+        TooManyTrustedAccounts,
         /// The account is not trusted.
         NotTrusted,
+        /// The trust list storage is internally inconsistent.
+        BadStorageState,
     }
 
-    // Dispatchable functions allows users to interact with the pallet and invoke state changes.
-    // These functions materialize as "extrinsics", which are often compared to transactions.
-    // Dispatchable functions must be annotated with a weight and must return a DispatchResult.
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         #[pallet::call_index(0)]
         #[pallet::weight(<<T as Config>::WeightInfo as crate::WeightInfo>::trust_account())]
         pub fn trust_account(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
-            // Check that the extrinsic was signed and get the signer.
-            // This function will return an error if the extrinsic is not signed.
-            // https://docs.substrate.io/v3/runtime/origins
             let sender = ensure_signed(origin)?;
-            // Check that the sender is not attempting to trust themselves.
+
             if sender == account {
                 Err(Error::<T>::TrustSelf)?;
             }
-            // Check that the account is not already trusted.
+
             if <AccountTrustedAccountIndex<T>>::contains_key(&sender, &account) {
                 Err(Error::<T>::AlreadyTrusted)?;
             }
-            // Get the total number of accounts the sender already trusts.
+
             let count = <AccountTrustedAccountListCount<T>>::get(&sender);
+            ensure!(
+                count < T::MaxTrustedAccounts::get(),
+                Error::<T>::TooManyTrustedAccounts
+            );
 
-            //----------------------------------------
+            let next_count = count.checked_add(1).ok_or(Error::<T>::BadStorageState)?;
 
-            // Insert the new account at the end of the list.
             <AccountTrustedAccountList<T>>::insert(&sender, count, &account);
-            // Update the size of the list.
-            <AccountTrustedAccountListCount<T>>::insert(&sender, count + 1);
-            // Store index + 1 for this trust pair.
-            <AccountTrustedAccountIndex<T>>::insert(&sender, &account, count + 1);
-            // Emit the event.
+            <AccountTrustedAccountListCount<T>>::insert(&sender, next_count);
+            <AccountTrustedAccountIndex<T>>::insert(&sender, &account, next_count);
             Self::deposit_event(Event::AccountTrusted(sender, account));
-            // Return a successful DispatchResultWithPostInfo
             Ok(())
         }
 
         #[pallet::call_index(1)]
         #[pallet::weight(<<T as Config>::WeightInfo as crate::WeightInfo>::untrust_account())]
         pub fn untrust_account(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
-            // Check that the extrinsic was signed and get the signer.
-            // This function will return an error if the extrinsic is not signed.
-            // https://docs.substrate.io/v3/runtime/origins
             let sender = ensure_signed(origin)?;
-            // Get the index + 1 of the account to be removed
-            let i = match <AccountTrustedAccountIndex<T>>::get(&sender, &account) {
-                Some(i) => i,
+            let index = match <AccountTrustedAccountIndex<T>>::get(&sender, &account) {
+                Some(index) => index,
                 None => return Err(Error::<T>::NotTrusted.into()),
             };
 
-            //----------------------------------------
-
-            // Delete the index from state.
-            <AccountTrustedAccountIndex<T>>::remove(&sender, &account);
-            // Get the list length.
             let count = <AccountTrustedAccountListCount<T>>::get(&sender);
-            // Check if this is not the last account.
-            if i != count {
-                // Get the last account.
-                let moving_account =
-                    <AccountTrustedAccountList<T>>::get(&sender, count - 1).unwrap();
-                // Overwrite the account being untrusted with the last account.
-                <AccountTrustedAccountList<T>>::insert(&sender, i - 1, &moving_account);
-                // Update the index + 1 of the last account.
-                <AccountTrustedAccountIndex<T>>::insert(&sender, moving_account, i);
+            ensure!(count > 0, Error::<T>::BadStorageState);
+            ensure!(index <= count, Error::<T>::BadStorageState);
+
+            let remove_index = index.checked_sub(1).ok_or(Error::<T>::BadStorageState)?;
+            let new_count = count.checked_sub(1).ok_or(Error::<T>::BadStorageState)?;
+
+            <AccountTrustedAccountIndex<T>>::remove(&sender, &account);
+
+            if index != count {
+                let moving_account = <AccountTrustedAccountList<T>>::get(&sender, new_count)
+                    .ok_or(Error::<T>::BadStorageState)?;
+
+                <AccountTrustedAccountList<T>>::insert(&sender, remove_index, &moving_account);
+                <AccountTrustedAccountIndex<T>>::insert(&sender, moving_account, index);
             }
-            // Remove the last account.
-            <AccountTrustedAccountList<T>>::remove(&sender, count - 1);
-            <AccountTrustedAccountListCount<T>>::insert(&sender, count - 1);
-            // Emit the event.
+
+            <AccountTrustedAccountList<T>>::remove(&sender, new_count);
+            <AccountTrustedAccountListCount<T>>::insert(&sender, new_count);
             Self::deposit_event(Event::AccountUntrusted(sender, account));
-            // Return a successful DispatchResultWithPostInfo
             Ok(())
         }
     }
 
     impl<T: Config> Pallet<T> {
+        fn trusted_accounts(account: &T::AccountId) -> sp_std::prelude::Vec<T::AccountId> {
+            let mut accounts = sp_std::prelude::Vec::new();
+            let count = AccountTrustedAccountListCount::<T>::get(account);
+
+            let mut i = 0;
+            while i < count {
+                if let Some(trusted_account) = AccountTrustedAccountList::<T>::get(account, i) {
+                    accounts.push(trusted_account);
+                }
+
+                i += 1;
+            }
+
+            accounts
+        }
+
         pub fn is_trusted(account: T::AccountId, trustee: T::AccountId) -> bool {
             AccountTrustedAccountIndex::<T>::contains_key(&account, &trustee)
         }
 
         pub fn is_trusted_only_deep(account: T::AccountId, trustee: T::AccountId) -> bool {
-            let count = AccountTrustedAccountListCount::<T>::get(&account);
-            let mut i = 0;
-            while i < count {
-                if AccountTrustedAccountIndex::<T>::contains_key(
-                    AccountTrustedAccountList::<T>::get(&account, i).unwrap(),
-                    &trustee,
-                ) {
+            for trusted_account in Self::trusted_accounts(&account) {
+                if AccountTrustedAccountIndex::<T>::contains_key(trusted_account, &trustee) {
                     return true;
                 }
-
-                i += 1;
             }
 
             false
@@ -182,16 +182,7 @@ pub mod pallet {
         }
 
         pub fn trusted_by(account: T::AccountId) -> sp_std::prelude::Vec<T::AccountId> {
-            let mut accounts = sp_std::prelude::Vec::new();
-            let count = AccountTrustedAccountListCount::<T>::get(&account);
-
-            let mut i = 0;
-            while i < count {
-                accounts.push(AccountTrustedAccountList::<T>::get(&account, i).unwrap());
-                i += 1;
-            }
-
-            accounts
+            Self::trusted_accounts(&account)
         }
 
         pub fn trusted_by_that_trust(

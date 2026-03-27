@@ -1,6 +1,7 @@
 use crate as pallet_acuity_trusted_accounts;
 use crate::Config;
 use frame_support::derive_impl;
+use frame_support::traits::ConstU32;
 use polkadot_sdk::{frame_support, frame_system, sp_io};
 
 pub type Block = frame_system::mocking::MockBlock<Test>;
@@ -20,6 +21,7 @@ impl frame_system::Config for Test {
 }
 
 impl Config for Test {
+    type MaxTrustedAccounts = ConstU32<4>;
     type WeightInfo = ();
 }
 

@@ -10,7 +10,7 @@ It lets any signed account maintain its own on-chain list of trusted accounts, r
 - Constant-time membership checks using an index map.
 - Constant-time removal with swap-remove style list compaction.
 - Runtime helper functions for direct and one-hop trust queries.
-- Optional runtime API and JSON-RPC crates for exposing trust queries to off-chain clients.
+- Configurable maximum trust-list size per account.
 - Unit tests and benchmarks included in the repository.
 
 ## Repository layout
@@ -20,8 +20,6 @@ It lets any signed account maintain its own on-chain list of trusted accounts, r
 - `src/benchmarking.rs` - benchmark definitions.
 - `src/mock.rs` - mock runtime used by tests.
 - `src/tests.rs` - pallet unit tests.
-- `rpc/runtime-api` - runtime API definitions for off-chain queries.
-- `rpc` - JSON-RPC server implementation built on `jsonrpsee`.
 
 ## What the pallet does
 
@@ -77,6 +75,7 @@ Behavior:
 - Requires a signed origin.
 - Rejects trusting yourself.
 - Rejects duplicate trust edges.
+- Rejects inserts once the configured trust-list limit is reached.
 - Appends the new trusted account to the end of the caller's list.
 - Updates the count and reverse index.
 - Emits `AccountTrusted(truster, trustee)`.
@@ -85,6 +84,7 @@ Possible errors:
 
 - `TrustSelf`
 - `AlreadyTrusted`
+- `TooManyTrustedAccounts`
 
 ### `untrust_account(origin, account)`
 
@@ -111,7 +111,9 @@ Possible errors:
 
 - `TrustSelf` - an account attempted to trust itself.
 - `AlreadyTrusted` - the trust edge already exists.
+- `TooManyTrustedAccounts` - the caller reached the configured trust-list limit.
 - `NotTrusted` - the trust edge does not exist.
+- `BadStorageState` - the pallet detected inconsistent trust-list storage.
 
 ## Runtime helper functions
 
@@ -174,9 +176,9 @@ This keeps storage compact and avoids shifting every later element.
 
 Because removal uses a swap-remove pattern, the order of trusted accounts can change after `untrust_account` is called. If downstream code depends on stable ordering, it must sort or otherwise normalize results outside the pallet.
 
-### No explicit max trust list size
+### Bounded trust list size
 
-The pallet does not currently enforce an upper bound on how many accounts one account may trust. Runtime integrators should consider whether they want to wrap or extend this pallet with limits, deposits, or custom weights if very large trust lists are possible in their environment.
+The pallet enforces a runtime-configured `MaxTrustedAccounts` limit for each account.
 
 ### One-hop deep trust only
 
@@ -202,7 +204,8 @@ std = [
 
 ```rust
 impl pallet_acuity_trusted_accounts::Config for Runtime {
-    type WeightInfo = ();
+    type MaxTrustedAccounts = ConstU32<256>;
+    type WeightInfo = pallet_acuity_trusted_accounts::weights::SubstrateWeight<Runtime>;
 }
 
 construct_runtime!(
@@ -215,68 +218,6 @@ construct_runtime!(
 
 If you generate benchmark-based weights for your runtime, replace the default `WeightInfo` implementation with your runtime-specific generated type.
 
-## Exposing the runtime API
-
-The repository includes an optional runtime API crate at `rpc/runtime-api`:
-
-- `is_trusted(account, trustee) -> bool`
-- `is_trusted_only_deep(account, trustee) -> bool`
-- `is_trusted_deep(account, trustee) -> bool`
-- `trusted_by(account) -> Vec<AccountId>`
-- `trusted_by_that_trust(account, other) -> Vec<AccountId>`
-
-To expose these methods from your runtime, implement the runtime API by forwarding to the pallet helpers.
-
-Example shape:
-
-```rust
-impl pallet_acuity_trusted_accounts_rpc_runtime_api::TrustedAccountsApi<Block, AccountId>
-    for Runtime
-{
-    fn is_trusted(account: AccountId, trustee: AccountId) -> bool {
-        TrustedAccounts::is_trusted(account, trustee)
-    }
-
-    fn is_trusted_only_deep(account: AccountId, trustee: AccountId) -> bool {
-        TrustedAccounts::is_trusted_only_deep(account, trustee)
-    }
-
-    fn is_trusted_deep(account: AccountId, trustee: AccountId) -> bool {
-        TrustedAccounts::is_trusted_deep(account, trustee)
-    }
-
-    fn trusted_by(account: AccountId) -> Vec<AccountId> {
-        TrustedAccounts::trusted_by(account)
-    }
-
-    fn trusted_by_that_trust(account: AccountId, other: AccountId) -> Vec<AccountId> {
-        TrustedAccounts::trusted_by_that_trust(account, other)
-    }
-}
-```
-
-## JSON-RPC integration
-
-The `rpc` crate exposes the runtime API through `jsonrpsee`.
-
-RPC methods:
-
-- `trustedAccounts_isTrusted`
-- `trustedAccounts_isTrustedOnlyDeep`
-- `trustedAccounts_isTrustedDeep`
-- `trustedAccounts_trustedBy`
-- `trustedAccounts_trustedByThatTrust`
-
-These methods accept an optional block hash so clients can query either the latest state or historical state at a specific block.
-
-Typical node wiring looks like this:
-
-```rust
-use pallet_acuity_trusted_accounts_rpc::TrustedAccounts;
-
-module.merge(TrustedAccounts::new(client.clone()).into_rpc())?;
-```
-
 ## Weights and benchmarks
 
 The pallet defines a `WeightInfo` trait in `src/weights.rs` with two functions:
@@ -284,7 +225,7 @@ The pallet defines a `WeightInfo` trait in `src/weights.rs` with two functions:
 - `trust_account()`
 - `untrust_account()`
 
-The default implementation returns a fixed placeholder weight of `10_000` for each call. For production runtimes, benchmark the pallet and plug in generated weights.
+The default implementation includes explicit database read/write accounting. For production runtimes, benchmark the pallet and plug in generated weights.
 
 Benchmark support is provided behind the `runtime-benchmarks` feature.
 
@@ -332,7 +273,6 @@ Then:
 - No deposits or economic spam controls are built in.
 - No origin restrictions beyond requiring a signed caller.
 - No recursive or weighted trust model is included.
-- No pagination helpers are provided for very large trust lists.
 - Function naming for `trusted_by` and `trusted_by_that_trust` reflects the current code, even though both operate on accounts trusted by the provided account.
 
 ## License
