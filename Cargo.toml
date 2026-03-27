@@ -13,28 +13,26 @@ repository = "https://github.com/acuity-social/acuity-trusted-accounts-pallet"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.6.9", default-features = false, features = [
+codec = { package = "parity-scale-codec", version = "3.7.5", default-features = false, features = [
 	"derive",
 ] }
-scale-info = { version = "2.10.0", default-features = false, features = ["derive"] }
-frame-support = { version = "27.0.0", default-features = false }
-frame-system = { version = "27.0.0", default-features = false }
-sp-std = { version = "13.0.0", default-features = false }
-frame-benchmarking = { version = "27.0.0", default-features = false, optional = true }
-
-[dev-dependencies]
-sp-core = { version = "27.0.0", default-features = false }
-sp-io = { version = "29.0.0", default-features = false }
-sp-runtime = { version = "30.0.1", default-features = false }
+scale-info = { version = "2.11.1", default-features = false, features = ["derive"] }
+polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-stable2512-3", default-features = false }
 
 [features]
 default = ["std"]
+runtime-benchmarks = [
+	"polkadot-sdk/frame-benchmarking",
+	"polkadot-sdk/runtime-benchmarks",
+]
 std = [
 	"codec/std",
+	"polkadot-sdk/frame-support",
+	"polkadot-sdk/frame-system",
+	"polkadot-sdk/sp-io",
+	"polkadot-sdk/sp-runtime",
+	"polkadot-sdk/sp-std",
+	"polkadot-sdk/std",
 	"scale-info/std",
-	"frame-support/std",
-	"frame-system/std",
-	"frame-benchmarking/std",
-	"sp-std/std",
 ]
-try-runtime = ["frame-support/try-runtime"]
+try-runtime = ["polkadot-sdk/try-runtime"]

@@ -1,9 +1,6 @@
 use codec::Codec;
-use jsonrpsee::{
-    core::RpcResult,
-    proc_macros::rpc,
-    types::error::{CallError, ErrorObject},
-};
+use jsonrpsee::{core::RpcResult, proc_macros::rpc, types::ErrorObjectOwned};
+use polkadot_sdk::{sp_api, sp_blockchain, sp_runtime};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
@@ -62,6 +59,14 @@ impl<C, P> TrustedAccounts<C, P> {
             _marker: Default::default(),
         }
     }
+
+    fn runtime_error(e: impl ToString) -> ErrorObjectOwned {
+        ErrorObjectOwned::owned(
+            Error::RuntimeError.into(),
+            "Unable to query dispatch info.",
+            Some(e.to_string()),
+        )
+    }
 }
 
 /// Error type of this RPC api.
@@ -100,14 +105,8 @@ where
         let api = self.client.runtime_api();
         let at_hash = at.unwrap_or_else(|| self.client.info().best_hash);
 
-        api.is_trusted(at_hash, account, trustee).map_err(|e| {
-            CallError::Custom(ErrorObject::owned(
-                Error::RuntimeError.into(),
-                "Unable to query dispatch info.",
-                Some(e.to_string()),
-            ))
-            .into()
-        })
+        api.is_trusted(at_hash, account, trustee)
+            .map_err(Self::runtime_error)
     }
 
     fn is_trusted_only_deep(
@@ -120,14 +119,7 @@ where
         let at_hash = at.unwrap_or_else(|| self.client.info().best_hash);
 
         api.is_trusted_only_deep(at_hash, account, trustee)
-            .map_err(|e| {
-                CallError::Custom(ErrorObject::owned(
-                    Error::RuntimeError.into(),
-                    "Unable to query dispatch info.",
-                    Some(e.to_string()),
-                ))
-                .into()
-            })
+            .map_err(Self::runtime_error)
     }
 
     fn is_trusted_deep(
@@ -139,14 +131,8 @@ where
         let api = self.client.runtime_api();
         let at_hash = at.unwrap_or_else(|| self.client.info().best_hash);
 
-        api.is_trusted_deep(at_hash, account, trustee).map_err(|e| {
-            CallError::Custom(ErrorObject::owned(
-                Error::RuntimeError.into(),
-                "Unable to query dispatch info.",
-                Some(e.to_string()),
-            ))
-            .into()
-        })
+        api.is_trusted_deep(at_hash, account, trustee)
+            .map_err(Self::runtime_error)
     }
 
     fn trusted_by(
@@ -157,14 +143,8 @@ where
         let api = self.client.runtime_api();
         let at_hash = at.unwrap_or_else(|| self.client.info().best_hash);
 
-        api.trusted_by(at_hash, account).map_err(|e| {
-            CallError::Custom(ErrorObject::owned(
-                Error::RuntimeError.into(),
-                "Unable to query dispatch info.",
-                Some(e.to_string()),
-            ))
-            .into()
-        })
+        api.trusted_by(at_hash, account)
+            .map_err(Self::runtime_error)
     }
 
     fn trusted_by_that_trust(
@@ -177,13 +157,6 @@ where
         let at_hash = at.unwrap_or_else(|| self.client.info().best_hash);
 
         api.trusted_by_that_trust(at_hash, account, account_is_trusted_by_trusted)
-            .map_err(|e| {
-                CallError::Custom(ErrorObject::owned(
-                    Error::RuntimeError.into(),
-                    "Unable to query dispatch info.",
-                    Some(e.to_string()),
-                ))
-                .into()
-            })
+            .map_err(Self::runtime_error)
     }
 }

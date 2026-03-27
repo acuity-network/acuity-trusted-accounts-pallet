@@ -13,11 +13,18 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.6.9" }
-jsonrpsee = { version = "0.16.2", features = ["client-core", "server", "macros"] }
+codec = { package = "parity-scale-codec", version = "3.7.5", default-features = false }
+jsonrpsee = { version = "0.24.10", features = ["client-core", "server", "macros"] }
 pallet-acuity-trusted-accounts-rpc-runtime-api = { path = "./runtime-api" }
-sp-api = "25.0.0"
-sp-blockchain = "27.0.0"
-sp-core = "27.0.0"
-sp-rpc = "25.0.0"
-sp-runtime = "30.0.1"
+polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-stable2512-3", default-features = false }
+
+[features]
+default = ["std"]
+std = [
+	"codec/std",
+	"pallet-acuity-trusted-accounts-rpc-runtime-api/std",
+	"polkadot-sdk/sp-api",
+	"polkadot-sdk/sp-blockchain",
+	"polkadot-sdk/sp-runtime",
+	"polkadot-sdk/std",
+]

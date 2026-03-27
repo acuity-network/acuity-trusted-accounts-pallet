@@ -1,7 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use polkadot_sdk::sp_api;
+
 #[cfg(not(feature = "std"))]
-use sp_std::prelude::Vec;
+use polkadot_sdk::sp_std::prelude::Vec;
 
 sp_api::decl_runtime_apis! {
     pub trait TrustedAccountsApi<AccountId> where
