@@ -19,7 +19,9 @@ impl frame_system::Config for Test {
     type Block = Block;
 }
 
-impl Config for Test {}
+impl Config for Test {
+    type WeightInfo = ();
+}
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
     let mut ext = sp_io::TestExternalities::new(Default::default());

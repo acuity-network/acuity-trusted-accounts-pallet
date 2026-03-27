@@ -3,6 +3,9 @@
 use polkadot_sdk::frame_support;
 
 pub use pallet::*;
+pub use weights::WeightInfo;
+
+pub mod weights;
 
 #[cfg(test)]
 mod mock;
@@ -13,7 +16,7 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 pub mod benchmarking;
 
-#[frame_support::pallet(dev_mode)]
+#[frame_support::pallet]
 pub mod pallet {
     use polkadot_sdk::frame_system::pallet_prelude::*;
     use polkadot_sdk::{frame_support::pallet_prelude::*, sp_std};
@@ -29,6 +32,7 @@ pub mod pallet {
                           + IsType<<Self as polkadot_sdk::frame_system::Config>::RuntimeEvent>,
     >
     {
+        type WeightInfo: crate::WeightInfo;
     }
 
     #[pallet::storage]
@@ -77,7 +81,7 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         #[pallet::call_index(0)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(<<T as Config>::WeightInfo as crate::WeightInfo>::trust_account())]
         pub fn trust_account(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
             // Check that the extrinsic was signed and get the signer.
             // This function will return an error if the extrinsic is not signed.
@@ -109,7 +113,7 @@ pub mod pallet {
         }
 
         #[pallet::call_index(1)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(<<T as Config>::WeightInfo as crate::WeightInfo>::untrust_account())]
         pub fn untrust_account(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
             // Check that the extrinsic was signed and get the signer.
             // This function will return an error if the extrinsic is not signed.
