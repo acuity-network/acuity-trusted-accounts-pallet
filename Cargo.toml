@@ -17,7 +17,10 @@ codec = { package = "parity-scale-codec", version = "3.7.5", default-features = 
 	"derive",
 ] }
 scale-info = { version = "2.11.1", default-features = false, features = ["derive"] }
-polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-stable2512-3", default-features = false }
+polkadot-sdk = { git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-stable2603", default-features = false }
+
+[patch.crates-io]
+core2 = { git = "https://github.com/bbqsrc/core2", rev = "545e84bcb0f235b12e21351e0c69767958efe2a7" }
 
 [features]
 default = ["std"]
